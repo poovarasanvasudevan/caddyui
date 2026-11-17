@@ -186,8 +186,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <form id="proxy-host-form" method="post" action="{{if .Host.ID}}/proxy-hosts/{{.Host.ID}}{{else}}/proxy-hosts{{end}}" class="{{if .Guided}}proxy-form--guided{{else}}bg-white border border-ink-200 rounded-xl shadow-card p-6 space-y-5 max-w-3xl{{end}}">
   {{if .Guided}}<input type="hidden" name="guided" value="1"><div id="guided-workflow-panels"></div>{{end}}
-  <div data-workflow-section="source" class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-    <div class="sm:col-span-2">
+  <div data-workflow-section="source" class="publish-fields">
+    <div>
       <label class="block text-sm font-medium text-ink-800 mb-1.5">Domain names <span class="text-ink-400 font-normal">(comma separated)</span></label>
       <input name="domains" value="{{.Host.Domains}}" required placeholder="example.com, www.example.com" class="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm font-mono bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none transition" />
       {{/* v2.12.0: wildcard cert via DNS-01 callout. Shown only when the
@@ -204,26 +204,26 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
       </div>
     </div>
-    <div>
-      <label class="block text-sm font-medium text-ink-800 mb-1.5">www redirect</label>
-      <select name="www_redirect" class="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none transition">
-        <option value="" {{if eq .Host.WWWRedirect ""}}selected{{end}}>Disabled</option>
-        <option value="to_www" {{if eq .Host.WWWRedirect "to_www"}}selected{{end}}>Bare → www</option>
-        <option value="to_bare" {{if eq .Host.WWWRedirect "to_bare"}}selected{{end}}>www → Bare</option>
-      </select>
-      <p class="text-xs text-ink-400 mt-1">Automatically 301 redirect between www and bare domain variants.</p>
+    <div class="publish-fields__pair">
+      <div>
+        <label class="block text-sm font-medium text-ink-800 mb-1.5">www redirect</label>
+        <select name="www_redirect" class="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none transition">
+          <option value="" {{if eq .Host.WWWRedirect ""}}selected{{end}}>Disabled</option>
+          <option value="to_www" {{if eq .Host.WWWRedirect "to_www"}}selected{{end}}>Bare → www</option>
+          <option value="to_bare" {{if eq .Host.WWWRedirect "to_bare"}}selected{{end}}>www → Bare</option>
+        </select>
+        <p class="text-xs text-ink-400 mt-1">Automatically 301 redirect between www and bare domain variants.</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-ink-800 mb-1.5">Trailing slash redirect</label>
+        <select name="trailing_slash_redirect" class="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none transition">
+          <option value="" {{if eq .Host.TrailingSlashRedirect ""}}selected{{end}}>Off</option>
+          <option value="add" {{if eq .Host.TrailingSlashRedirect "add"}}selected{{end}}>Add trailing slash (/path → /path/)</option>
+          <option value="remove" {{if eq .Host.TrailingSlashRedirect "remove"}}selected{{end}}>Remove trailing slash (/path/ → /path)</option>
+        </select>
+        <p class="text-xs text-ink-400 mt-1">Automatically redirect to normalize trailing slashes (301 redirect).</p>
+      </div>
     </div>
-    <!-- v2.9.61: trailing_slash_redirect -->
-<div class="mb-4">
-  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Trailing Slash Redirect</label>
-  <select name="trailing_slash_redirect"
-    class="rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-1.5 text-sm">
-    <option value="" {{if eq .Host.TrailingSlashRedirect ""}}selected{{end}}>Off</option>
-    <option value="add" {{if eq .Host.TrailingSlashRedirect "add"}}selected{{end}}>Add trailing slash (/path → /path/)</option>
-    <option value="remove" {{if eq .Host.TrailingSlashRedirect "remove"}}selected{{end}}>Remove trailing slash (/path/ → /path)</option>
-  </select>
-  <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Automatically redirect to normalize trailing slashes (301 redirect).</p>
-</div>
   </div>
 
   {{/* v2.11.8: Forward Scheme + Host + Port hoisted to directly under

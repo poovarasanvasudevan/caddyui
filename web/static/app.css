@@ -577,7 +577,7 @@ html.dark .domain-pill:hover {
   gap: 1.25rem;
   padding: 1.5rem;
 }
-.publish-panel__body > [data-workflow-section] { display: block; }
+.publish-panel__body > [data-workflow-section]:not(.grid):not(.flex):not(.publish-fields) { display: block; }
 .publish-panel__body details {
   padding: 1rem;
   border: 1px solid var(--ui-border);

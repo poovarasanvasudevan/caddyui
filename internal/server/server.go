@@ -523,7 +523,11 @@ func (s *Server) Routes() http.Handler {
 		// for first-visit / SW-not-yet-installed cases.)
 		staticHandler := http.StripPrefix("/static/", http.FileServer(http.FS(staticSub)))
 		r.Handle("/static/*", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			w.Header().Set("Cache-Control", "public, max-age=86400")
+			if strings.HasSuffix(req.URL.Path, "/design.css") {
+				w.Header().Set("Cache-Control", "no-cache")
+			} else {
+				w.Header().Set("Cache-Control", "public, max-age=86400")
+			}
 			staticHandler.ServeHTTP(w, req)
 		}))
 	}

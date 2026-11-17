@@ -1,53 +1,49 @@
 {{define "title"}}{{t $ "login.title"}}{{end}}
 {{define "content"}}
-<div class="max-w-md mx-auto mt-20">
-  <div class="flex items-center gap-2.5 justify-center mb-6">
-    <span class="relative inline-flex items-center justify-center w-10 h-10 rounded-xl bg-brand-500 shadow-card">
-      <svg viewBox="0 0 24 24" fill="none" class="w-5 h-5 text-white"><path d="M4 7l8-4 8 4v10l-8 4-8-4V7z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M4 7l8 4 8-4M12 11v10" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
-    </span>
-    <span class="text-xl font-semibold tracking-tight text-ink-900">CaddyUI</span>
-  </div>
+<div class="login-split">
+  <aside class="login-rail">
+    <div class="login-rail__orbs" aria-hidden="true"><span></span><span></span><span></span></div>
+    <span class="login-rail__mark">C</span>
+    <p class="login-rail__eyebrow">CaddyUI</p>
+    <h2 class="login-rail__headline">Manage the proxy from one place.</h2>
+    <ul>
+      <li><span class="login-dot login-dot--primary"></span> Proxy hosts, redirects, and routes</li>
+      <li><span class="login-dot login-dot--info"></span> Certificates and DNS beside the fleet</li>
+      <li><span class="login-dot login-dot--warning"></span> Health and sync state on every save</li>
+    </ul>
+  </aside>
+  <div class="login-main">
+    <div class="login-card">
+      <h1>{{t $ "login.heading"}}</h1>
+      <p class="login-lead">{{t $ "login.description"}}</p>
 
-  <div class="bg-white border border-ink-200 rounded-xl shadow-card p-8">
-    <h1 class="text-lg font-semibold text-ink-900 mb-1">{{t $ "login.heading"}}</h1>
-    <p class="text-sm text-ink-500 mb-6">{{t $ "login.description"}}</p>
+      {{if .Reset}}
+      <div class="login-note login-note--ok">{{t $ "login.password_updated"}}</div>
+      {{end}}
+      {{if .Invited}}
+      <div class="login-note login-note--ok">{{t $ "login.account_activated"}}</div>
+      {{end}}
+      {{if .Error}}
+      <div class="login-note login-note--bad">{{.Error}}</div>
+      {{end}}
 
-    {{if .Reset}}
-    <div class="bg-green-50 border border-green-200 text-green-800 px-3 py-2 rounded-lg mb-4 text-sm">{{t $ "login.password_updated"}}</div>
-    {{end}}
-    {{if .Invited}}
-    <div class="bg-green-50 border border-green-200 text-green-800 px-3 py-2 rounded-lg mb-4 text-sm">{{t $ "login.account_activated"}}</div>
-    {{end}}
-    {{if .Error}}
-    <div class="bg-red-50 border border-red-200 text-red-800 px-3 py-2 rounded-lg mb-4 text-sm">{{.Error}}</div>
-    {{end}}
-
-    <form id="login-form" method="post" action="/login" class="space-y-4">
-      <div>
-        <label for="login-email" class="block text-sm font-medium text-ink-800 mb-1.5">{{t $ "profile.account.email"}}</label>
-        <input id="login-email" name="email" type="email" autocomplete="email" required autofocus class="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none transition" />
-      </div>
-      <div>
-        <label for="login-password" class="block text-sm font-medium text-ink-800 mb-1.5">{{t $ "login.password"}}</label>
-        <input id="login-password" name="password" type="password" autocomplete="current-password" required class="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none transition" />
-        <div class="mt-1.5 text-right">
-          <a href="/forgot-password" class="text-sm text-brand-600 hover:text-brand-700">{{t $ "login.forgot_password"}}</a>
+      <form id="login-form" method="post" action="/login">
+        <div class="login-field">
+          <label for="login-email">{{t $ "profile.account.email"}}</label>
+          <input id="login-email" name="email" type="email" autocomplete="email" required autofocus />
         </div>
-      </div>
-      {{template "captchaWidget" (dict "CaptchaEnabled" .CaptchaEnabled "CaptchaProvider" .CaptchaProvider "CaptchaSiteKey" .CaptchaSiteKey "FormID" "login-form")}}
-      <button class="w-full inline-flex items-center justify-center bg-brand-600 hover:bg-brand-700 text-white font-medium text-sm py-2.5 rounded-lg shadow-sm transition">{{t $ "login.submit"}}</button>
-    </form>
-    {{if .OIDCEnabled}}
-    <div class="flex items-center gap-3 my-5">
-      <div class="h-px flex-1 bg-ink-200"></div>
-      <span class="text-xs text-ink-400">{{t $ "login.or"}}</span>
-      <div class="h-px flex-1 bg-ink-200"></div>
+        <div class="login-field">
+          <label for="login-password">{{t $ "login.password"}}</label>
+          <input id="login-password" name="password" type="password" autocomplete="current-password" required />
+          <a class="login-forgot" href="/forgot-password">{{t $ "login.forgot_password"}}</a>
+        </div>
+        {{template "captchaWidget" (dict "CaptchaEnabled" .CaptchaEnabled "CaptchaProvider" .CaptchaProvider "CaptchaSiteKey" .CaptchaSiteKey "FormID" "login-form")}}
+        <button class="login-submit" type="submit">{{t $ "login.submit"}}</button>
+      </form>
+      {{if .OIDCEnabled}}
+      <a href="/auth/oidc/login" class="login-alt">{{.OIDCButtonLabel}}</a>
+      {{end}}
     </div>
-    <a href="/auth/oidc/login" class="w-full inline-flex items-center justify-center gap-2 border border-ink-300 hover:bg-ink-50 text-ink-800 font-medium text-sm py-2.5 rounded-lg transition">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-      {{.OIDCButtonLabel}}
-    </a>
-    {{end}}
   </div>
 </div>
 {{end}}

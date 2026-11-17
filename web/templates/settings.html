@@ -58,17 +58,15 @@
          a POST to /api/me/color-theme on change. Server-rendered
          data-color-theme on <html> takes precedence on next page load. */}}
     <div class="py-4 border-b border-ink-100">
-      <label class="block text-sm font-medium text-ink-900 mb-1.5">{{t $ "settings.general.color_theme"}}</label>
-      <p class="text-xs text-ink-500 mb-2">{{t $ "settings.general.color_theme_help"}}</p>
-      <select data-color-theme-select
-        class="rounded-lg border border-ink-200 px-3 py-2 text-sm bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none transition">
-        <option value="default">{{t $ "settings.theme.default"}}</option>
-        <option value="orange">{{t $ "settings.theme.orange"}}</option>
-        <option value="forest">{{t $ "settings.theme.forest"}}</option>
-        <option value="rose">{{t $ "settings.theme.rose"}}</option>
-        <option value="indigo">{{t $ "settings.theme.indigo"}}</option>
-      </select>
-      <p class="text-xs text-ink-400 mt-1.5">{{t $ "settings.general.themes_note"}} (<code class="bg-ink-100 px-1 rounded">users.color_theme</code>) {{t $ "settings.general.themes_note_after"}}</p>
+      <label class="block text-sm font-medium text-ink-900 mb-1.5">Color</label>
+      <p class="text-xs text-ink-500 mb-2">Accent for buttons, the account mark, and focus. Status colors stay the same.</p>
+      <div class="app-color__swatches">
+        <button type="button" data-primary="#3be8b0" style="--swatch:#3be8b0" aria-label="Mint"></button>
+        <button type="button" data-primary="#2563eb" style="--swatch:#2563eb" aria-label="Blue"></button>
+        <button type="button" data-primary="#7c3aed" style="--swatch:#7c3aed" aria-label="Violet"></button>
+        <button type="button" data-primary="#d97706" style="--swatch:#d97706" aria-label="Amber"></button>
+        <label class="app-color__custom" title="Custom color"><input type="color" data-primary-input aria-label="Custom color" value="#3be8b0"></label>
+      </div>
     </div>
     <div class="flex items-center gap-3 py-3 border-b border-ink-100">
       <label class="text-sm text-ink-700 w-32 shrink-0">{{t $ "settings.general.favicon"}}</label>
