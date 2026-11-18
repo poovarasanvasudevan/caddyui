@@ -1956,10 +1956,10 @@ func (s *Server) dnsProviderViewData(serverID int64) map[string]any {
 		DisplayName string
 	}
 	type profileEntry struct {
-		ID          string
-		ProviderID  string
-		DisplayName string
-		Legacy      bool
+		ID          string `json:"id"`
+		ProviderID  string `json:"provider"`
+		DisplayName string `json:"name"`
+		Legacy      bool   `json:"legacy"`
 	}
 	enabled := []providerEntry{}
 	profiles := []profileEntry{}

@@ -463,12 +463,12 @@ func (s *Server) deleteServer(w http.ResponseWriter, r *http.Request) {
 func (s *Server) selectServer(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil || id <= 0 {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		http.Redirect(w, r, "/v1", http.StatusSeeOther)
 		return
 	}
 	// Validate the server actually exists.
 	if _, err := models.GetCaddyServer(s.DB, id); err != nil {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		http.Redirect(w, r, "/v1", http.StatusSeeOther)
 		return
 	}
 	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
@@ -483,7 +483,7 @@ func (s *Server) selectServer(w http.ResponseWriter, r *http.Request) {
 	})
 	ref := r.Header.Get("Referer")
 	if ref == "" {
-		ref = "/"
+		ref = "/v1"
 	}
 	http.Redirect(w, r, ref, http.StatusSeeOther)
 }

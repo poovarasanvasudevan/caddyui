@@ -39,6 +39,7 @@ import (
 	appdb "github.com/X4Applegate/caddyui/internal/db"
 	"github.com/X4Applegate/caddyui/internal/dns"
 	"github.com/X4Applegate/caddyui/internal/models"
+	"github.com/X4Applegate/caddyui/web"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	otplib "github.com/pquerna/otp"
@@ -557,6 +558,9 @@ func (s *Server) Routes() http.Handler {
 
 	r.Get("/setup", s.getSetup)
 	r.Post("/setup", s.postSetup)
+	r.Get("/api/setup", s.apiSetupStatus)
+	r.Post("/api/setup", s.apiSetup)
+	r.Get("/", s.getUIHome)
 	r.Get("/login", s.getLogin)
 	r.Post("/login", s.postLogin)
 	r.Post("/logout", s.postLogout)
@@ -566,10 +570,23 @@ func (s *Server) Routes() http.Handler {
 	r.Post("/login/totp", s.postTOTPVerify)
 	r.Get("/forgot-password", s.getForgotPassword)
 	r.Post("/forgot-password", s.postForgotPassword)
+	r.Post("/api/forgot-password", s.apiForgotPassword)
+	r.Get("/api/reset-password", s.apiResetPasswordStatus)
+	r.Post("/api/reset-password", s.apiResetPassword)
+	r.Get("/api/accept-invite", s.apiAcceptInviteStatus)
+	r.Post("/api/accept-invite", s.apiAcceptInvite)
+	r.Post("/api/login/totp", s.apiLoginTOTP)
+	r.Get("/api/login-options", s.apiLoginOptions)
 	r.Get("/reset-password", s.getResetPassword)
 	r.Post("/reset-password", s.postResetPassword)
 	r.Get("/accept-invite", s.getAcceptInvite)
 	r.Post("/accept-invite", s.postAcceptInvite)
+	webRedirect := func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/web/", http.StatusPermanentRedirect)
+	}
+	r.Get("/web", webRedirect)
+	r.Head("/web", webRedirect)
+	r.Handle("/web/*", web.UI())
 
 	r.Group(func(r chi.Router) {
 		r.Use(s.requireAuth)
@@ -577,7 +594,7 @@ func (s *Server) Routes() http.Handler {
 		// scope that requireAuth puts on the context to decide whether a
 		// request is bearer-authenticated (and so not CSRF-reachable).
 		r.Use(s.requireCSRF)
-		r.Get("/", s.dashboard)
+		r.Get("/v1", s.dashboard)
 		r.Get("/onboarding", s.getOnboarding)
 
 		// Read routes — open to both admin and viewer roles.
@@ -654,6 +671,9 @@ func (s *Server) Routes() http.Handler {
 		// Replaces the v2.2.x per-provider /api/cf-zones and /api/pb-domains
 		// endpoints with a single handler that routes on ?provider=.
 		r.Get("/api/dns-zones", s.apiDNSZones)
+		r.Get("/api/v1/dns-profiles", s.apiV1DNSProfiles)
+		r.Get("/api/v1/dns-zones", s.apiDNSZones)
+		r.Get("/api/v1/dns-zones/check-record", s.apiDNSCheckRecord)
 
 		// v2.4.8: warn when a proxy host would collide with a pre-existing
 		// DNS record. Proxy-host form JS calls this after the user picks
@@ -681,7 +701,62 @@ func (s *Server) Routes() http.Handler {
 		r.Get("/api/v1/raw-routes/{id}", s.apiV1GetRawRoute)
 		r.Get("/api/v1/certificates", s.apiV1ListCertificates)
 		r.Get("/api/v1/certificates/{id}", s.apiV1GetCertificate)
+		r.Get("/api/v1/certificates/{id}/inspect", s.apiV1CertificateInspect)
 		r.Get("/api/v1/servers", s.apiV1ListServers)
+		r.Get("/api/v1/me", s.apiV1Me)
+		r.Put("/api/v1/me", s.apiV1UpdateMe)
+		r.Get("/api/v1/users", s.apiV1Users)
+		r.Get("/api/v1/users/{id}", s.apiV1GetUser)
+		r.Get("/api/v1/groups", s.apiV1Groups)
+		r.Get("/api/v1/groups/{id}", s.apiV1GetGroup)
+		r.Get("/api/v1/activity", s.apiV1Activity)
+		r.Get("/api/v1/sessions", s.apiV1Sessions)
+		r.Post("/api/v1/sessions/{token}/revoke", s.apiV1RevokeSession)
+		r.Get("/api/v1/api-tokens", s.apiV1APITokens)
+		r.Post("/api/v1/api-tokens", s.apiV1CreateAPIToken)
+		r.Get("/api/v1/snapshots", s.apiV1Snapshots)
+		r.Get("/api/v1/layer4-proxies", s.apiV1Layer4)
+		r.Get("/api/v1/layer4-proxies/{id}", s.apiV1GetLayer4)
+		r.Get("/api/v1/middleware-profiles", s.apiV1Middleware)
+		r.Get("/api/v1/middleware-profiles/{id}", s.apiV1GetMiddleware)
+		r.Get("/api/v1/servers/{id}", s.apiV1GetServer)
+		r.Get("/api/v1/settings/{section}", s.apiV1SettingsSection)
+		r.Put("/api/v1/settings/{section}", s.apiV1UpdateSettingsSection)
+		r.Post("/api/v1/settings-actions/test-email", s.apiRelay(s.postTestEmail))
+		r.Post("/api/v1/settings-actions/test-webhook", s.apiRelay(s.postTestWebhook))
+		r.Post("/api/v1/settings-actions/test-crowdsec", s.apiTestCrowdSec)
+		r.Post("/api/v1/settings-actions/prune", s.apiRelay(s.pruneAnalyticsHandler))
+		r.Post("/api/v1/settings-actions/vacuum", s.apiRelay(s.vacuumAnalyticsHandler))
+		r.Post("/api/v1/settings-actions/backup", s.apiRelay(s.postBackupRun))
+		r.Post("/api/v1/settings-actions/clear-dns/{id}", s.apiRelay(s.postClearDNSProvider))
+		r.Get("/api/v1/analytics/summary", s.apiV1AnalyticsSummary)
+		r.Get("/api/v1/analytics/requests", s.apiV1AnalyticsRequests)
+		r.Get("/api/v1/analytics/hosts/{host}", s.apiV1AnalyticsHost)
+		r.Get("/api/v1/proxy-hosts/{id}/health", s.apiV1ProxyHealth)
+		r.Get("/api/v1/snapshots/{id}/diff", s.apiV1SnapshotDiff)
+		r.Get("/api/v1/caddy-config", s.apiV1CaddyConfigOutline)
+		r.Get("/api/v1/import/preview", s.apiV1ImportPreview)
+		r.Get("/api/v1/porkbun/domains", s.apiV1PorkbunDomains)
+		r.Get("/api/v1/totp", s.apiV1TOTP)
+		r.Post("/api/v1/totp", s.apiV1TOTPUpdate)
+		r.Get("/api/v1/meta", s.apiV1Meta)
+		r.Get("/api/v1/dashboard", s.apiV1Dashboard)
+		r.Post("/api/v1/servers/{id}/select", s.apiV1SelectServer)
+		r.Post("/api/v1/api-tokens/{id}/revoke", s.apiRelayAuth(s.revokeAPIToken))
+		r.Delete("/api/v1/users/{id}", s.apiRelay(s.deleteUser))
+		r.Delete("/api/v1/groups/{id}", s.apiRelay(s.deleteGroup))
+		r.Delete("/api/v1/servers/{id}", s.apiRelay(s.deleteServer))
+		r.Delete("/api/v1/layer4-proxies/{id}", s.apiRelay(s.deleteLayer4Proxy))
+		r.Post("/api/v1/layer4-proxies/{id}/toggle", s.apiRelay(s.toggleLayer4Proxy))
+		r.Delete("/api/v1/middleware-profiles/{id}", s.apiRelay(s.deleteMiddlewareProfile))
+		r.Post("/api/v1/snapshots", s.apiRelay(s.createManualSnapshot))
+		r.Post("/api/v1/snapshots/upload", s.apiRelay(s.uploadSnapshot))
+		r.Post("/api/v1/snapshots/auto", s.apiRelay(s.setAutoSnapshots))
+		r.Post("/api/v1/snapshots/{id}/restore", s.apiRelay(s.restoreSnapshot))
+		r.Delete("/api/v1/snapshots/{id}", s.apiRelay(s.deleteSnapshot))
+		r.Post("/api/v1/users/invite", s.apiRelay(s.postInviteUser))
+		r.Post("/api/v1/servers/{id}/sync-from-current", s.apiRelay(s.syncServerFromCurrent))
+		r.Get("/api/v1/snapshots/{id}/download", s.apiV1DownloadSnapshot)
 
 		// Write routes — admin-only in practice. Viewers get 403 via requireWrite.
 		r.Group(func(r chi.Router) {
@@ -729,6 +804,45 @@ func (s *Server) Routes() http.Handler {
 			r.Delete("/api/v1/proxy-hosts/{id}", s.apiV1DeleteProxyHost)
 			r.Post("/api/v1/proxy-hosts/{id}/toggle", s.apiV1ToggleProxyHost)
 			r.Post("/api/v1/proxy-hosts/{id}/maintenance", s.apiV1ToggleMaintenanceProxyHost)
+			r.Post("/api/v1/proxy-hosts/{id}/clone", func(w http.ResponseWriter, r *http.Request) {
+				s.finishRelay(s.cloneProxyHost, w, r)
+			})
+			r.Post("/api/v1/proxy-hosts/bulk-toggle", func(w http.ResponseWriter, r *http.Request) {
+				s.finishRelay(s.bulkToggleProxyHosts, w, r)
+			})
+			r.Post("/api/v1/proxy-hosts/bulk-maintenance", func(w http.ResponseWriter, r *http.Request) {
+				s.finishRelay(s.bulkMaintenanceProxyHosts, w, r)
+			})
+			r.Post("/api/v1/proxy-hosts/bulk-delete", func(w http.ResponseWriter, r *http.Request) {
+				s.finishRelay(s.bulkDeleteProxyHosts, w, r)
+			})
+			r.Post("/api/v1/redirection-hosts/bulk-toggle", func(w http.ResponseWriter, r *http.Request) {
+				s.finishRelay(s.bulkToggleRedirectionHosts, w, r)
+			})
+			r.Post("/api/v1/redirection-hosts/bulk-delete", func(w http.ResponseWriter, r *http.Request) {
+				s.finishRelay(s.bulkDeleteRedirectionHosts, w, r)
+			})
+			r.Post("/api/v1/raw-routes/bulk-toggle", func(w http.ResponseWriter, r *http.Request) {
+				s.finishRelay(s.bulkToggleRawRoutes, w, r)
+			})
+			r.Post("/api/v1/raw-routes/bulk-delete", func(w http.ResponseWriter, r *http.Request) {
+				s.finishRelay(s.bulkDeleteRawRoutes, w, r)
+			})
+			r.Post("/api/v1/raw-routes/reclassify", func(w http.ResponseWriter, r *http.Request) {
+				s.finishRelay(s.postReclassifyRawRoutes, w, r)
+			})
+			r.Post("/api/v1/certificates/bulk-delete", func(w http.ResponseWriter, r *http.Request) {
+				s.finishRelay(s.bulkDeleteCertificates, w, r)
+			})
+			r.Post("/api/v1/certificates/probe", func(w http.ResponseWriter, r *http.Request) {
+				s.finishRelay(s.probeCertificatesHandler, w, r)
+			})
+			r.Post("/api/v1/certificates/{id}/probe", func(w http.ResponseWriter, r *http.Request) {
+				s.finishRelay(s.probeCertificateHandler, w, r)
+			})
+			r.Post("/api/v1/redirection-hosts/{id}/clone", func(w http.ResponseWriter, r *http.Request) {
+				s.finishRelay(s.cloneRedirectionHost, w, r)
+			})
 			r.Post("/api/v1/redirection-hosts", s.apiV1CreateRedirectionHost)
 			r.Put("/api/v1/redirection-hosts/{id}", s.apiV1UpdateRedirectionHost)
 			r.Delete("/api/v1/redirection-hosts/{id}", s.apiV1DeleteRedirectionHost)
@@ -740,6 +854,19 @@ func (s *Server) Routes() http.Handler {
 			r.Post("/api/v1/certificates", s.apiV1CreateCertificate)
 			r.Put("/api/v1/certificates/{id}", s.apiV1UpdateCertificate)
 			r.Delete("/api/v1/certificates/{id}", s.apiV1DeleteCertificate)
+			r.Post("/api/v1/users", s.apiV1CreateUser)
+			r.Put("/api/v1/users/{id}", s.apiV1UpdateUser)
+			r.Post("/api/v1/groups", s.apiV1CreateGroup)
+			r.Put("/api/v1/groups/{id}", s.apiV1UpdateGroup)
+			r.Post("/api/v1/layer4-proxies", s.apiV1CreateLayer4)
+			r.Put("/api/v1/layer4-proxies/{id}", s.apiV1UpdateLayer4)
+			r.Post("/api/v1/middleware-profiles", s.apiV1CreateMiddleware)
+			r.Put("/api/v1/middleware-profiles/{id}", s.apiV1UpdateMiddleware)
+			r.Post("/api/v1/servers", s.apiV1CreateServer)
+			r.Put("/api/v1/servers/{id}", s.apiV1UpdateServer)
+			r.Post("/api/v1/import", s.apiV1Import)
+			r.Post("/api/v1/caddyfile-import", s.apiV1CaddyfileImport)
+			r.Post("/api/v1/porkbun/import", s.apiV1PorkbunImport)
 
 			r.Get("/redirection-hosts/new", s.newRedirectionHost)
 			r.Post("/redirection-hosts", s.createRedirectionHost)
@@ -755,6 +882,7 @@ func (s *Server) Routes() http.Handler {
 			r.Post("/redirection-hosts/reorder", s.reorderRedirectionHosts)
 
 			r.Post("/caddy/reload", s.reloadCaddy)
+			r.Post("/api/v1/dashboard/sync", s.apiV1SyncCaddy)
 			r.Post("/caddyfile-import", s.postCaddyfileImport)
 
 			// v2.7.2: certificate create + edit are writer-level, not admin-only.
@@ -2014,6 +2142,19 @@ func verifyTurnstile(secretKey, token, remoteIP string) (bool, error) {
 	return true, nil
 }
 
+func (s *Server) getUIHome(w http.ResponseWriter, r *http.Request) {
+	n, err := models.CountUsers(s.DB)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if n == 0 {
+		http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		return
+	}
+	s.render(w, r, "ui_home.html", nil)
+}
+
 func (s *Server) getLogin(w http.ResponseWriter, r *http.Request) {
 	n, err := models.CountUsers(s.DB)
 	if err != nil {
@@ -2291,7 +2432,7 @@ func (s *Server) postLogin(w http.ResponseWriter, r *http.Request) {
 	// context (browser fingerprint mismatch on a teammate's account is useful
 	// signal during an incident).
 	_ = models.LogActivity(s.DB, 0, u.Email, "login_success", "ip:"+clientIP, r.UserAgent(), true)
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, "/v1", http.StatusSeeOther)
 }
 
 func (s *Server) postLogout(w http.ResponseWriter, r *http.Request) {
@@ -2309,7 +2450,7 @@ func (s *Server) postLogout(w http.ResponseWriter, r *http.Request) {
 	if actor != "" {
 		_ = models.LogActivity(s.DB, 0, actor, "logout", "ip:"+clientIPFromRequest(r), "", true)
 	}
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 // --- TOTP / 2FA ---
@@ -2413,7 +2554,7 @@ func (s *Server) postTOTPVerify(w http.ResponseWriter, r *http.Request) {
 	// v2.9.210: log the second-factor success so the audit trail mirrors
 	// the password-only login_success path.
 	_ = models.LogActivity(s.DB, 0, u.Email, "login_totp_success", "ip:"+clientIPFromRequest(r), r.UserAgent(), true)
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, "/v1", http.StatusSeeOther)
 }
 
 // getTOTPSetup shows the TOTP setup page for the current user.
@@ -3512,87 +3653,7 @@ func (s *Server) postImport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	// Build a set of every hostname already represented in the DB — proxies,
-	// redirects, AND raw routes. Re-import would otherwise duplicate raw routes
-	// (they don't go through models.DomainsConflict) and re-creating conflicting
-	// proxies/redirects would fail at sync when two entries claim the same host.
-	// Use admin view (isAdmin=true) to see all existing entries for deduplication.
-	taken := map[string]struct{}{}
-	if existing, err := models.ListProxyHosts(s.DB, s.currentServerID(r), 0, true, nil); err == nil {
-		for _, h := range existing {
-			for _, d := range h.DomainList() {
-				taken[strings.ToLower(d)] = struct{}{}
-			}
-		}
-	}
-	if existing, err := models.ListRedirectionHosts(s.DB, s.currentServerID(r), 0, true, nil); err == nil {
-		for _, h := range existing {
-			for _, d := range h.DomainList() {
-				taken[strings.ToLower(d)] = struct{}{}
-			}
-		}
-	}
-	if existing, err := models.ListRawRoutes(s.DB, s.currentServerID(r), 0, true, nil); err == nil {
-		for _, rr := range existing {
-			for _, d := range rawRouteHosts(rr) {
-				taken[strings.ToLower(d)] = struct{}{}
-			}
-		}
-	}
-	claim := func(domains []string) bool {
-		for _, d := range domains {
-			if _, ok := taken[strings.ToLower(d)]; ok {
-				return false
-			}
-		}
-		for _, d := range domains {
-			taken[strings.ToLower(d)] = struct{}{}
-		}
-		return true
-	}
-
-	// Import always creates global/admin-owned resources (ownerID=0), but the
-	// account TRIGGERING the import can be any write-capable role — GHSA-r4wm-rgc5-q834
-	// (3rd finding) follow-up: the pulled-in config's ForwardHost/ForwardPort
-	// are attacker-controlled from that account's perspective (a non-admin
-	// could point Caddy's own admin API at itself via a crafted upstream
-	// Caddy config), so the same non-admin upstream guard applies here too.
-	// cu, not the resulting ownerID=0, is what the guard checks.
-	cu := s.currentUser(r)
-	nProxy, nRedir, nRaw := 0, 0, 0
-	for i := range result.Proxies {
-		p := result.Proxies[i]
-		if !claim(p.DomainList()) {
-			continue
-		}
-		if msg := s.validateProxyUpstreamsForUser(cu, &p); msg != "" {
-			// The reason (msg) is derived from a route that carries header and
-			// API-key values, so it is deliberately not written to the log.
-			log.Printf("import: skipped proxy host %q: refused by the non-admin upstream guard", p.Domains)
-			continue
-		}
-		if _, err := models.CreateProxyHost(s.DB, s.currentServerID(r), 0, &p); err == nil {
-			nProxy++
-		}
-	}
-	for i := range result.Redirect {
-		rd := result.Redirect[i]
-		if !claim(rd.DomainList()) {
-			continue
-		}
-		if _, err := models.CreateRedirectionHost(s.DB, s.currentServerID(r), 0, &rd); err == nil {
-			nRedir++
-		}
-	}
-	for i := range result.Passthrough {
-		rr := result.Passthrough[i]
-		if !claim(rawRouteHosts(rr)) {
-			continue
-		}
-		if _, err := models.CreateRawRoute(s.DB, s.currentServerID(r), 0, &rr); err == nil {
-			nRaw++
-		}
-	}
+	nProxy, nRedir, nRaw := s.applyImportResult(r, result)
 	detail := fmt.Sprintf("proxies=%d redirects=%d passthrough=%d", nProxy, nRedir, nRaw)
 	log.Printf("import: %s imported", detail)
 	_ = models.LogActivity(s.DB, s.currentServerID(r), s.currentUserEmail(r), "import", "", detail, true)
@@ -3623,7 +3684,7 @@ func rawRouteHosts(rr models.RawRoute) []string {
 // they wrote, not Caddy's internal JSON.
 
 func (s *Server) getCaddyfileImport(w http.ResponseWriter, r *http.Request) {
-	s.render(w, r, "caddyfile_import.html", map[string]any{
+	s.renderCaddyfileImport(w, r, map[string]any{
 		"User":    s.currentUser(r),
 		"Section": "paste",
 	})
@@ -3645,7 +3706,7 @@ func (s *Server) postCaddyfileImport(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	src := strings.TrimSpace(r.FormValue("caddyfile"))
 	if src == "" {
-		s.render(w, r, "caddyfile_import.html", map[string]any{
+		s.renderCaddyfileImport(w, r, map[string]any{
 			"User":    s.currentUser(r),
 			"Section": "paste",
 			"Error":   "Paste some Caddyfile text first.",
@@ -3670,7 +3731,7 @@ func (s *Server) postCaddyfileImport(w http.ResponseWriter, r *http.Request) {
 			hint = "This paste uses `import <name>` referring to a snippet that isn't included. " +
 				"Paste the snippet definition `(<name>) { ... }` above the site block, or remove the `import` line."
 		}
-		s.render(w, r, "caddyfile_import.html", map[string]any{
+		s.renderCaddyfileImport(w, r, map[string]any{
 			"User":    s.currentUser(r),
 			"Section": "paste",
 			"Error":   msg,
@@ -3694,7 +3755,7 @@ func (s *Server) postCaddyfileImport(w http.ResponseWriter, r *http.Request) {
 	// in a pasted block never reached Caddy and ACME fell back to HTTP-01.
 	autoPolicies := extractAdaptedAutomationPolicies(adapted.Result)
 	if len(routes) == 0 {
-		s.render(w, r, "caddyfile_import.html", map[string]any{
+		s.renderCaddyfileImport(w, r, map[string]any{
 			"User":    s.currentUser(r),
 			"Section": "paste",
 			"Error":   "Caddy adapted the text but it produced no HTTP routes. Make sure at least one site block is included.",
@@ -3914,7 +3975,7 @@ func (s *Server) postCaddyfileImport(w http.ResponseWriter, r *http.Request) {
 		// Sync so new routes take effect immediately. Don't force TLS — new
 		// raw_routes don't change cert assignments.
 		if err := s.syncCaddy(s.currentServerID(r), false); err != nil {
-			s.render(w, r, "caddyfile_import.html", map[string]any{
+			s.renderCaddyfileImport(w, r, map[string]any{
 				"User":    s.currentUser(r),
 				"Section": "paste",
 				"Error":   "Imported to DB but sync to Caddy failed: " + err.Error(),
@@ -3948,7 +4009,7 @@ func (s *Server) postCaddyfileImport(w http.ResponseWriter, r *http.Request) {
 			nRaw++
 		}
 	}
-	s.render(w, r, "caddyfile_import.html", map[string]any{
+	s.renderCaddyfileImport(w, r, map[string]any{
 		"User":         s.currentUser(r),
 		"Section":      "paste",
 		"Results":      results,

@@ -269,7 +269,7 @@ func TestDashboardProfileAndSettingsFollowTheLanguage(t *testing.T) {
 		t.Fatalf("choosing zh-CN failed: %s", rec.Header().Get("Location"))
 	}
 	pages := map[string][]string{
-		"/":                 {"基础设施概览", `"js.health.port_disabled":"端口：已禁用"`, "Sync Caddy"},
+		"/v1":               {"基础设施概览", `"js.health.port_disabled":"端口：已禁用"`, "Sync Caddy"},
 		"/profile":          {"我的资料", "Display name"},
 		"/settings/general": {">常规<", "站点标题等", ">站点标题<", "保存常规设置", "Color theme", ">Notifications<"},
 	}

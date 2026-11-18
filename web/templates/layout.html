@@ -469,7 +469,7 @@ if ('serviceWorker' in navigator) {
         {{$sec := .Section}}
 	        <div class="app-nav__group">
 	          <span class="app-nav__label">{{t $ "nav.section.overview"}}</span>
-	          {{template "navItem" (dict "Section" $sec "Active" "dashboard" "Href" "/" "Label" (t $ "nav.operations") "Icon" "dashboard")}}
+	          {{template "navItem" (dict "Section" $sec "Active" "dashboard" "Href" "/v1" "Label" (t $ "nav.operations") "Icon" "dashboard")}}
 	          {{if eq .User.Role "admin"}}{{template "navItem" (dict "Section" $sec "Active" "onboarding" "Href" "/onboarding" "Label" (t $ "nav.getting_started") "Icon" "guide")}}{{end}}
 	        </div>
 

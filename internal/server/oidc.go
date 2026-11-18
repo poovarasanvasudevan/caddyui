@@ -547,5 +547,5 @@ func (s *Server) getOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	auth.SetSessionCookie(w, r, tok, exp)
 	_ = models.LogActivity(s.DB, 0, u.Email, "login_success_sso", "ip:"+clientIPFromRequest(r), r.UserAgent(), true)
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, "/v1", http.StatusSeeOther)
 }

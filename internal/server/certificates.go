@@ -96,7 +96,16 @@ func (s *Server) certOptionListForRequest(r *http.Request) ([]models.Certificate
 	return models.ListCertificateOptionsForUser(s.DB, s.currentServerID(r), viewerID, isAdmin, s.groupPeerIDs(r))
 }
 
-func (s *Server) listCertificates(w http.ResponseWriter, r *http.Request) {
+type certificatePage struct {
+	Views             []certView
+	Certs             []models.Certificate
+	UnusedCount       int
+	UnusedDismissed   bool
+	AutoDomains       []autoDomainView
+	PorkbunConfigured bool
+}
+
+func (s *Server) loadCertificatePage(r *http.Request, usageFilter string) (certificatePage, error) {
 	sid := s.currentServerID(r)
 	cu := s.currentUser(r)
 	var viewerID int64
@@ -104,43 +113,23 @@ func (s *Server) listCertificates(w http.ResponseWriter, r *http.Request) {
 	if cu != nil {
 		viewerID = cu.ID
 	}
-	// v2.7.2: non-admin sees only their own uploads + global (admin-owned)
-	// certs. Admin view still gets every row plus the owner email via JOIN
-	// for the Owner column in certificates.html.
-	// v2.7.4: ...plus any certs owned by a teammate (shared group member).
 	certs, err := models.ListCertificatesForUser(s.DB, sid, viewerID, isAdmin, s.groupPeerIDs(r))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return certificatePage{}, err
 	}
 	lifecycleStates, _ := models.ListCertificateLifecycle(s.DB, sid)
-	// Usage must be calculated against the complete environment, not only
-	// resources visible to the current user. Otherwise a global certificate
-	// used by another tenant could be incorrectly labeled as unused.
 	allHosts, _ := models.ListProxyHosts(s.DB, sid, 0, true, nil)
 	allRedirs, _ := models.ListRedirectionHosts(s.DB, sid, 0, true, nil)
 	allRoutes, _ := models.ListRawRoutes(s.DB, sid, 0, true, nil)
 	referencedCerts := referencedCertificateIDs(allHosts, allRedirs, allRoutes)
-	usageFilter := ""
-	if r.URL.Query().Get("usage") == "unused" {
-		usageFilter = "unused"
-	}
-
-	// Precompute the group-peer set once so the per-row edit predicate does
-	// not issue a DB query per certificate.
 	peerSet := map[int64]bool{}
 	for _, id := range s.groupPeerIDs(r) {
 		peerSet[id] = true
 	}
 	views := make([]certView, 0, len(certs))
 	unusedCount := 0
-	// Resolved once for the whole page rather than per row (v2.53.0).
 	readRoots := s.certificateReadRoots()
 	for _, c := range certs {
-		// Edit/delete predicate: admin → always; user-role → their own rows
-		// and rows owned by a group peer (access-groups grant collaborative
-		// management, v2.52.5). Global admin-owned (NULL owner) rows stay
-		// admin-only even though they're visible for the dropdown-reference case.
 		canEdit := isAdmin || (c.OwnerID.Valid && viewerID != 0 && (c.OwnerID.Int64 == viewerID || peerSet[c.OwnerID.Int64]))
 		view := certView{
 			Certificate: c,
@@ -167,8 +156,6 @@ func (s *Server) listCertificates(w http.ResponseWriter, r *http.Request) {
 					view.ExpirySource = "stored"
 				}
 			}
-			// v2.39.0: a file-path certificate CaddyUI cannot read falls back
-			// to what the node actually serves for its domain.
 			view.Probe = s.certificateProbeFor(c.ID)
 			if view.Probe.HasCertificate() {
 				if exp == nil {
@@ -187,24 +174,36 @@ func (s *Server) listCertificates(w http.ResponseWriter, r *http.Request) {
 			views = append(views, view)
 		}
 	}
-	unusedDismissed := unusedCount > 0 &&
-		mustGetSetting(s.DB, unusedCertificateDismissalKey(sid)) == unusedCertificateFingerprint(certs, referencedCerts)
-
-	// Collect domains auto-managed by Caddy (ssl_enabled, no custom cert).
-	// Use admin view to see all hosts regardless of owner. v2.36.2 (issue
-	// #65): Advanced routes are included — see collectAutoManagedDomains.
-	autoDomains := collectAutoManagedDomains(certs, lifecycleStates, allHosts, allRedirs, allRoutes)
-
 	pbAPIKey, _ := models.GetSetting(s.DB, settingPBAPIKey)
 	pbSecretKey, _ := models.GetSetting(s.DB, settingPBSecretKey)
+	return certificatePage{
+		Views:             views,
+		Certs:             certs,
+		UnusedCount:       unusedCount,
+		UnusedDismissed:   unusedCount > 0 && mustGetSetting(s.DB, unusedCertificateDismissalKey(sid)) == unusedCertificateFingerprint(certs, referencedCerts),
+		AutoDomains:       collectAutoManagedDomains(certs, lifecycleStates, allHosts, allRedirs, allRoutes),
+		PorkbunConfigured: pbAPIKey != "" && pbSecretKey != "",
+	}, nil
+}
+
+func (s *Server) listCertificates(w http.ResponseWriter, r *http.Request) {
+	usageFilter := ""
+	if r.URL.Query().Get("usage") == "unused" {
+		usageFilter = "unused"
+	}
+	page, err := s.loadCertificatePage(r, usageFilter)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	s.render(w, r, "certificates.html", map[string]any{
 		"User":              s.currentUser(r),
-		"Certs":             views,
-		"UnusedCount":       unusedCount,
+		"Certs":             page.Views,
+		"UnusedCount":       page.UnusedCount,
 		"UsageFilter":       usageFilter,
-		"UnusedDismissed":   unusedDismissed,
-		"AutoDomains":       autoDomains,
-		"PorkbunConfigured": pbAPIKey != "" && pbSecretKey != "",
+		"UnusedDismissed":   page.UnusedDismissed,
+		"AutoDomains":       page.AutoDomains,
+		"PorkbunConfigured": page.PorkbunConfigured,
 		"Section":           "certs",
 	})
 }
@@ -224,7 +223,7 @@ func (s *Server) dismissTOTPPolicyRecommendation(w http.ResponseWriter, r *http.
 		return
 	}
 	_ = models.LogActivity(s.DB, s.currentServerID(r), cu.Email, "recommendation_dismiss", "two_factor_policy", "", true)
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, "/v1", http.StatusSeeOther)
 }
 
 func (s *Server) dismissUnusedCertificateRecommendation(w http.ResponseWriter, r *http.Request) {
@@ -277,6 +276,39 @@ func (s *Server) getCertificateInspect(w http.ResponseWriter, r *http.Request) {
 
 	s.fillCertificateInspectData(data, id, *cert)
 	s.render(w, r, "certificate_inspect.html", data)
+}
+
+func (s *Server) apiV1CertificateInspect(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	cert, err := s.visibleCertificate(r, id)
+	if err != nil || cert == nil {
+		writeJSONError(w, http.StatusNotFound, "not found")
+		return
+	}
+	data := map[string]any{}
+	s.fillCertificateInspectData(data, id, *cert)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"name":           cert.Name,
+		"domains":        cert.Domains,
+		"source":         cert.Source,
+		"subject":        data["Subject"],
+		"issuer":         data["Issuer"],
+		"sans":           data["SANs"],
+		"not_before":     data["NotBefore"],
+		"not_after":      data["NotAfter"],
+		"days_left":      data["DaysLeft"],
+		"key_type":       data["KeyType"],
+		"key_bits":       data["KeyBits"],
+		"serial_number":  data["SerialNumber"],
+		"fingerprint":    data["Fingerprint"],
+		"from_probe":     data["FromProbe"] == true,
+		"read_error":     data["ReadError"],
+		"served_matches": data["ServedMatches"],
+	})
 }
 
 // fillCertificateInspectData adds the parsed certificate details to data:

@@ -1,0 +1,22 @@
+{{define "title"}}CaddyUI{{end}}
+{{define "content"}}
+<div class="ui-pick">
+  <div class="ui-pick__intro">
+    <span class="ui-pick__mark" aria-hidden="true">C</span>
+    <h1>CaddyUI</h1>
+    <p class="ui-pick__lead">Choose an interface. Both use the same account.</p>
+  </div>
+  <div class="ui-pick__choices">
+    <a class="ui-pick__card" href="/v1">
+      <span class="ui-pick__version">V1</span>
+      <span class="ui-pick__name">Template UI</span>
+      <span class="ui-pick__text">The server-rendered pages for operations, routes, and settings.</span>
+    </a>
+    <a class="ui-pick__card" href="/web/">
+      <span class="ui-pick__version">V2</span>
+      <span class="ui-pick__name">React UI</span>
+      <span class="ui-pick__text">The new interface, with the same routes, settings, and fleet.</span>
+    </a>
+  </div>
+</div>
+{{end}}

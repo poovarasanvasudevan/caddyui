@@ -396,6 +396,139 @@ func (s *Server) analyticsServerScope(r *http.Request) int64 {
 	return serverID
 }
 
+func (s *Server) analyticsDashboard(r *http.Request, cu *models.User) map[string]any {
+	serverID := s.analyticsServerScope(r)
+	isAdmin := cu != nil && cu.Role == models.RoleAdmin
+	allowed, _ := s.scopedHostsForAnalytics(cu, serverID)
+	scoped := !isAdmin
+	now := time.Now()
+	loc := activeLocation()
+	todayStart := time.Date(now.In(loc).Year(), now.In(loc).Month(), now.In(loc).Day(), 0, 0, 0, 0, loc)
+	week := now.Add(-7 * 24 * time.Hour)
+	day := now.Add(-24 * time.Hour)
+	var todayTotals, weekTotals models.AccessTotals
+	var live int
+	if !scoped {
+		todayTotals, _ = models.AccessTotalsSince(s.DB, todayStart, "", serverID)
+		weekTotals, _ = models.AccessTotalsSince(s.DB, week, "", serverID)
+		live, _ = models.AccessLiveVisitors(s.DB, 5*time.Minute, serverID)
+	} else {
+		for _, host := range allowed {
+			part, _ := models.AccessTotalsSince(s.DB, todayStart, host, serverID)
+			todayTotals.Views += part.Views
+			todayTotals.Visitors += part.Visitors
+			part, _ = models.AccessTotalsSince(s.DB, week, host, serverID)
+			weekTotals.Views += part.Views
+			weekTotals.Visitors += part.Visitors
+		}
+		live = s.liveVisitorsAcrossHosts(allowed, 5*time.Minute, serverID)
+	}
+	var hosts []models.HostStats
+	if !scoped {
+		hosts, _ = models.TopHostsSince(s.DB, week, 50, serverID)
+	} else {
+		hosts, _ = models.HostStatsForHosts(s.DB, week, allowed, serverID)
+	}
+	bucket := int64(3600)
+	var raw []models.HourlyBucket
+	if !scoped {
+		raw, _ = models.AccessBuckets(s.DB, day, now, bucket, "", serverID)
+	} else {
+		merged := map[int64]models.HourlyBucket{}
+		for _, host := range allowed {
+			part, _ := models.AccessBuckets(s.DB, day, now, bucket, host, serverID)
+			for _, item := range part {
+				current := merged[item.Hour.Unix()]
+				current.Hour = item.Hour
+				current.Views += item.Views
+				merged[item.Hour.Unix()] = current
+			}
+		}
+		for _, item := range merged {
+			raw = append(raw, item)
+		}
+	}
+	spark := fillBuckets(raw, day, now, bucket)
+	var mixHosts []string
+	if scoped {
+		mixHosts = allowed
+	}
+	mix := s.statusMixByBucket(day, now, bucket, mixHosts, serverID)
+	sparkOut := make([]map[string]any, 0, len(spark))
+	for _, item := range spark {
+		bucketMix := mix[item.Hour.Unix()]
+		sparkOut = append(sparkOut, map[string]any{
+			"hour": item.Hour.UTC(), "views": item.Views,
+			"2xx": bucketMix.S2xx, "3xx": bucketMix.S3xx, "4xx": bucketMix.S4xx, "5xx": bucketMix.S5xx,
+		})
+	}
+	var bandwidth []models.BandwidthBucket
+	if !scoped {
+		bandwidth, _ = models.BandwidthBuckets(s.DB, day, now, bucket, "", serverID)
+	} else {
+		merged := map[int64]models.BandwidthBucket{}
+		for _, host := range allowed {
+			part, _ := models.BandwidthBuckets(s.DB, day, now, bucket, host, serverID)
+			for _, item := range part {
+				current := merged[item.Hour.Unix()]
+				current.Hour = item.Hour
+				current.BytesOut += item.BytesOut
+				merged[item.Hour.Unix()] = current
+			}
+		}
+		for _, item := range merged {
+			bandwidth = append(bandwidth, item)
+		}
+	}
+	filled := fillBandwidthBuckets(bandwidth, day, now, bucket)
+	var bandwidthTotal int64
+	bandwidthOut := make([]map[string]any, 0, len(filled))
+	for _, item := range filled {
+		bandwidthTotal += item.BytesOut
+		bandwidthOut = append(bandwidthOut, map[string]any{"hour": item.Hour.UTC(), "bytes": item.BytesOut})
+	}
+	var status models.StatusBuckets
+	if !scoped {
+		status, _ = models.StatusBucketsSince(s.DB, week, "", serverID)
+	} else {
+		for _, host := range allowed {
+			part, _ := models.StatusBucketsSince(s.DB, week, host, serverID)
+			status.S2xx += part.S2xx
+			status.S3xx += part.S3xx
+			status.S4xx += part.S4xx
+			status.S5xx += part.S5xx
+		}
+	}
+	hostOut := make([]map[string]any, 0, len(hosts))
+	for _, host := range hosts {
+		hostOut = append(hostOut, map[string]any{
+			"host": host.Host, "visitors": host.Visitors, "views": host.Views, "top_path": host.TopPath, "last_visit": host.LastVisit.UTC(),
+		})
+	}
+	servers, _ := models.ListCaddyServers(s.DB)
+	serverOut := make([]map[string]any, 0, len(servers))
+	for _, server := range servers {
+		serverOut = append(serverOut, map[string]any{"id": server.ID, "name": server.Name})
+	}
+	out := map[string]any{
+		"admin":       isAdmin,
+		"today_views": todayTotals.Views, "today_visitors": todayTotals.Visitors,
+		"week_views": weekTotals.Views, "week_visitors": weekTotals.Visitors,
+		"live_visitors": live, "analytics_enabled": loadAnalyticsConfig(s.DB).Enabled,
+		"selected_server_id": serverID, "servers": serverOut, "hosts": hostOut,
+		"sparkline": sparkOut, "bandwidth": bandwidthOut, "bandwidth_total": bandwidthTotal,
+		"status": map[string]int{"2xx": status.S2xx, "3xx": status.S3xx, "4xx": status.S4xx, "5xx": status.S5xx},
+	}
+	if isAdmin && s.analyticsIngest != nil {
+		snap := s.analyticsIngest.Stats()
+		out["ingest"] = map[string]any{
+			"connections": snap.Connections, "events": snap.Events, "excluded": snap.Excluded, "errors": snap.Errors,
+			"healthy": snap.Events > 0 && time.Since(snap.LastEventAt) < 10*time.Minute, "last_event": snap.LastEventAt.UTC(),
+		}
+	}
+	return out
+}
+
 // getAnalytics renders the /analytics overview page. Shows totals (today +
 // last 7d), the "live now" visitor count, a per-host table, a 24-hour
 // hourly sparkline, and a status-code breakdown. Scope is admin-see-all

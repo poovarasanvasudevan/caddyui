@@ -361,6 +361,14 @@ func (s *Server) dnsUpdateAllRecords(serverID int64, newIP string) {
 // renders every provider with the same code path. Cloudflare, Hetzner, and Route 53
 // return real opaque zone IDs; for Porkbun/DO/GoDaddy/Namecheap the ID
 // and name are the same string (the bare domain).
+func (s *Server) apiV1DNSProfiles(w http.ResponseWriter, r *http.Request) {
+	data := s.dnsProviderViewData(s.currentServerID(r))
+	writeJSON(w, http.StatusOK, map[string]any{
+		"profiles":  data["DNSProfiles"],
+		"server_ip": data["CurrentServerIP"],
+	})
+}
+
 func (s *Server) apiDNSZones(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	provider := strings.ToLower(strings.TrimSpace(q.Get("provider")))

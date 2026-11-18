@@ -87,7 +87,7 @@ func TestI18nLoginErrorsAndSuccessfulSession(t *testing.T) {
 		}
 	}
 	rec := e.do(t, "", http.MethodPost, "/login", url.Values{"email": {"admin@t"}, "password": {"password-123"}})
-	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/" {
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/v1" {
 		t.Fatalf("successful login changed: %d %s", rec.Code, rec.Header().Get("Location"))
 	}
 	hasSession := false
